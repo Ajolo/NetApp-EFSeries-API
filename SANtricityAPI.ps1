@@ -1,6 +1,4 @@
 ﻿# EF-Series System Manager API Test
-# https://10.251.229.52:8443/devmgr/docs/
-
 
 # =========================
 # Globals
@@ -22,19 +20,22 @@ add-type @"
 [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
 
 # node IPs
-$EFSeriesC2A = "https://0.0.0.0:8443/"
-
-# persist web session after logging in 
-$session = New-Object Microsoft.Powershell.Commands.WebRequestSession
+$EFSeriesC2A = "https://0.0.0.0:8443/devmgr"
 
 # creds
 $username = "admin"
 $pass = "redacted"
 
+# persist web session after logging in 
+$session = New-Object Microsoft.Powershell.Commands.WebRequestSession
+
 # headers
 $headers = @{}
 $headers.Add('accept','application/json')
 $headers.Add('Content-Type','application/json')
+
+# misc
+$storageSystemId = "1"
 
 
 
@@ -53,7 +54,7 @@ Function LoginAPI ($username, $pass) {
 
     $restParams = @{
         Method     = 'Post'
-        Uri        = $EFSeriesC2A+"devmgr/utils/login"
+        Uri        = $EFSeriesC2A+"utils/login"
         Headers    = $headers 
         Body       = $credentialsJSON
         WebSession = $session
@@ -61,8 +62,7 @@ Function LoginAPI ($username, $pass) {
 
     Invoke-RestMethod @restParams
 }
-
-LoginAPI $username $pass
+# LoginAPI $username $pass
 
 
 
@@ -76,12 +76,17 @@ LoginAPI $username $pass
 Function GetStorageSystems {
     $restParams = @{
         Method     = 'Get'
-        Uri        = $EFSeriesC2A+"devmgr/v2/storage-systems"
+        Uri        = $EFSeriesC2A+"v2/storage-systems"
         Headers    = $headers 
         WebSession = $session
     }
 
-    Invoke-RestMethod @restParams
+    try {
+        Invoke-RestMethod @restParams
+    }
+    catch {
+        CatchException $restParams
+    }
 }
 GetStorageSystems
 
@@ -89,24 +94,34 @@ GetStorageSystems
 Function GetEvents {
     $restParams = @{
         Method     = 'Get'
-        Uri        = $EFSeriesC2A+"devmgr/v2/events"
+        Uri        = $EFSeriesC2A+"v2/events"
         Headers    = $headers 
         WebSession = $session
     }
 
-    Invoke-RestMethod @restParams
+    try {
+        Invoke-RestMethod @restParams
+    }
+    catch {
+        CatchException $restParams
+    }
 }
 GetEvents
 
 Function GetVolumes {
     $restParams = @{
         Method     = 'Get'
-        Uri        = $EFSeriesC2A+"devmgr/v2/storage-systems/1/volumes"
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/volumes"
         Headers    = $headers 
         WebSession = $session
     }
 
-    Invoke-RestMethod @restParams
+    try {
+        Invoke-RestMethod @restParams
+    }
+    catch {
+        CatchException $restParams
+    }
 }
 GetVolumes
 
@@ -114,49 +129,52 @@ GetVolumes
 Function GetControllerID {
     $restParams = @{
         Method     = 'Get'
-        Uri        = $EFSeriesC2A+"devmgr/v2/storage-systems/1/controllers"
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/controllers"
         Headers    = $headers 
         WebSession = $session
+    }  
+      
+    try {
+        (Invoke-RestMethod @restParams).controllerRef[0]
+    }
+    catch {
+        CatchException $restParams
     }
 
-    (Invoke-RestMethod @restParams).controllerRef[0]
 }
 GetControllerID
 
 Function GetStoragePool {
     $restParams = @{
         Method     = 'Get'
-        Uri        = $EFSeriesC2A+"devmgr/v2/storage-systems/1/storage-pools"
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/storage-pools"
         Headers    = $headers 
         WebSession = $session
     }
 
-    (Invoke-RestMethod @restParams).volumeGroupRef
+    try {
+        (Invoke-RestMethod @restParams).volumeGroupRef
+    }
+    catch {
+        CatchException $restParams
+    }
 }
 GetStoragePool
 
 Function GetHosts {
     $restParams = @{
         Method     = 'Get'
-        Uri        = $EFSeriesC2A+"devmgr/v2/storage-systems/1/hosts"
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/hosts"
         Headers    = $headers 
         WebSession = $session
     }
+
     try {
         Invoke-RestMethod @restParams
     }
     catch {
-        if ($_.Exception.Response.StatusCode.value_ -eq "Error 401 Unauthorized") {
-            Write-Host "Not logged in -- attempting log in now . . ."
-            LoginAPI $username $pass
-            Invoke-RestMethod @restParams
-        }
-        else {
-            Write-Host ($_.Exception.Response.StatusCode.value_)
-        }
+        CatchException $restParams
     }
-
-    # Invoke-RestMethod @restParams
 }
 GetHosts
 
@@ -188,15 +206,20 @@ Function CreateVolume ($volName, $size) {
     
     $restParams = @{
         Method     = 'Post'
-        Uri        = $EFSeriesC2A+"devmgr/v2/storage-systems/1/volumes"
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/volumes"
         Headers    = $headers
         Body       = $volumeDetails 
         WebSession = $session
     }
 
-    Invoke-RestMethod @restParams
+    try {
+        Invoke-RestMethod @restParams
+    }
+    catch {
+        CatchException $restParams
+    }
 }
-CreateVolume myNewestVol 25
+CreateVolume mapThisVol 25
 
 
 
@@ -204,13 +227,54 @@ CreateVolume myNewestVol 25
 # Volume Mapping
 # =========================
 
+Function MapVolume ($targetHost, $targetVol) {
+    $mappingDetails = '
+    {
+        "mappableObjectId": "' + $targetVol + '",
+        "targetId": "' + $targetHost + '"
+    }'
+
+    $restParams = @{
+        Method     = 'Post'
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/volume-mappings"
+        Headers    = $headers 
+        Body       = $mappingDetails
+        WebSession = $session
+    }
+    
+    try {
+        Invoke-RestMethod @restParams
+    }
+    catch {
+        CatchException $restParams
+    }
+}
+# MapVolume <target host id> <target volume id>
+MapVolume "84000000600A098000BF6F310030060D5C3C58CA" "02000000600A098000BF85F300001E555C41E60F" 
+
+
+
+# =========================
+# Exception Handler
+# =========================
+
+Function CatchException ($restParams) {
+    Write-Host $restParams
+    if ($_.Exception.Message -like "*401*") {
+        Write-Host "Not logged in -- attempting log in now . . ."
+        LoginAPI $username $pass
+        Invoke-RestMethod @restParams
+    }
+    else {
+        Write-Host ($_.Exception.Message)
+    }
+}
 
 
 
 # =========================
 # WIP
 # =========================
-
 
 # diskDriveIds might expect [ "0, 1, 2, ... etc " ] instead of ex. below
 $filesystem = '
@@ -222,26 +286,3 @@ $filesystem = '
 }'
 # -ContentType 'application/json'
 # Invoke-RestMethod -Method Post -Uri ($EFSeriesC2A+"devmgr/v2/storage-systems/1/storage-pools") -Headers $headers -Body $filesystem -ContentType 'application/json' -WebSession $session
-
-$volDetails = '
-{
-  "poolId": "myFirstVolGroup",
-  "name": "myFirstVolume",
-  "sizeUnit": "gb",
-  "size": "10.00",
-  "segSize": 0,
-  "dataAssuranceEnabled": false,
-  "owningControllerId": "1",
-  "metaTags": [
-    {
-      "key": "test",
-      "value": "ing"
-    }
-  ]
-}
-'
-
-Invoke-RestMethod -Method Post -Uri ($EFSeriesC2A+"devmgr/v2/storage-systems/1/volumes") -Headers $headers -Body $filesystem -ContentType 'application/json' -WebSession $session
-
-
-
