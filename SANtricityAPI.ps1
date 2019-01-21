@@ -88,7 +88,7 @@ Function GetStorageSystems {
         CatchException $restParams
     }
 }
-GetStorageSystems
+# GetStorageSystems
 
 
 Function GetEvents {
@@ -106,9 +106,9 @@ Function GetEvents {
         CatchException $restParams
     }
 }
-GetEvents
+# GetEvents
 
-Function GetVolumes {
+Function GetVolumes ($getIdsOnly) {
     $restParams = @{
         Method     = 'Get'
         Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/volumes"
@@ -117,16 +117,21 @@ Function GetVolumes {
     }
 
     try {
-        Invoke-RestMethod @restParams
+        if ($getIdsOnly -eq $true) {
+            (Invoke-RestMethod @restParams).id
+        }
+        else {
+            (Invoke-RestMethod @restParams)
+        }
     }
     catch {
         CatchException $restParams
     }
 }
-GetVolumes
+# GetVolumes $true # '$false' returns all volume details
 
 
-Function GetControllerID {
+Function GetControllerId {
     $restParams = @{
         Method     = 'Get'
         Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/controllers"
@@ -142,9 +147,9 @@ Function GetControllerID {
     }
 
 }
-GetControllerID
+# GetControllerId
 
-Function GetStoragePool {
+Function GetStoragePoolId {
     $restParams = @{
         Method     = 'Get'
         Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/storage-pools"
@@ -159,7 +164,7 @@ Function GetStoragePool {
         CatchException $restParams
     }
 }
-GetStoragePool
+# GetStoragePoolId
 
 Function GetHosts {
     $restParams = @{
@@ -176,7 +181,46 @@ Function GetHosts {
         CatchException $restParams
     }
 }
-GetHosts
+# GetHosts
+
+Function GetDriveIds ($getIdsOnly) {
+    $restParams = @{
+        Method     = 'Get'
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/drives"
+        Headers    = $headers 
+        WebSession = $session
+    }
+
+    try {
+        if ($getIdsOnly -eq $true) {
+            (Invoke-RestMethod @restParams).id
+        }
+        else {
+            (Invoke-RestMethod @restParams)
+        }
+    }
+    catch {
+        CatchException $restParams
+    }
+}
+# GetDriveIds $true # '$false' returns all drive details
+
+Function GetSnapshots {
+    $restParams = @{
+        Method     = 'Get'
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/snapshot-images"
+        Headers    = $headers 
+        WebSession = $session
+    }
+
+    try {
+        (Invoke-RestMethod @restParams)
+    }
+    catch {
+        CatchException $restParams
+    }
+}
+# GetSnapshots
 
 
 
@@ -185,8 +229,8 @@ GetHosts
 # =========================
 
 Function CreateVolume ($volName, $size) {
-    $controllerId = GetControllerID
-    $poolId = GetStoragePool
+    $controllerId = GetControllerId
+    $poolId = GetStoragePoolId
     $volumeDetails = '
     {
        "poolId": "' + $poolId + '",
@@ -219,19 +263,13 @@ Function CreateVolume ($volName, $size) {
         CatchException $restParams
     }
 }
-CreateVolume mapThisVol 25
+# CreateVolume delThisVolume 25
 
-
-
-# =========================
-# Volume Mapping
-# =========================
-
-Function MapVolume ($targetHost, $targetVol) {
+Function MapVolume ($targetHostId, $targetVolId) {
     $mappingDetails = '
     {
-        "mappableObjectId": "' + $targetVol + '",
-        "targetId": "' + $targetHost + '"
+        "mappableObjectId": "' + $targetVolId + '",
+        "targetId": "' + $targetHostId + '"
     }'
 
     $restParams = @{
@@ -249,8 +287,31 @@ Function MapVolume ($targetHost, $targetVol) {
         CatchException $restParams
     }
 }
-# MapVolume <target host id> <target volume id>
-MapVolume "84000000600A098000BF6F310030060D5C3C58CA" "02000000600A098000BF85F300001E555C41E60F" 
+# MapVolume "84000000600A098000BF6F310030060D5C3C58CA" "02000000600A098000BF85F300001E555C41E60F" 
+
+
+
+# =========================
+# DELETE Functions
+# =========================
+
+Function DeleteVolume ($targetVolId){
+    $restParams = @{
+        Method     = 'Delete'
+        Uri        = $EFSeriesC2A+"v2/storage-systems/"+$storageSystemId+"/volumes/"+$targetVolId
+        Headers    = $headers 
+        Body       = $mappingDetails
+        WebSession = $session
+    }
+    
+    try {
+        Invoke-RestMethod @restParams
+    }
+    catch {
+        CatchException $restParams
+    }
+}
+# DeleteVolume 02000000600A098000BF85F300001E615C45CC56
 
 
 
@@ -259,7 +320,6 @@ MapVolume "84000000600A098000BF6F310030060D5C3C58CA" "02000000600A098000BF85F300
 # =========================
 
 Function CatchException ($restParams) {
-    Write-Host $restParams
     if ($_.Exception.Message -like "*401*") {
         Write-Host "Not logged in -- attempting log in now . . ."
         LoginAPI $username $pass
@@ -273,16 +333,10 @@ Function CatchException ($restParams) {
 
 
 # =========================
-# WIP
+# Function Calls
 # =========================
 
-# diskDriveIds might expect [ "0, 1, 2, ... etc " ] instead of ex. below
-$filesystem = '
-{
-    "raidLevel": "0",
-    "diskDriveIds": [ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" ], 
-    "eraseSecuredDrives": true,
-    "name": "mySecondPool"
-}'
-# -ContentType 'application/json'
-# Invoke-RestMethod -Method Post -Uri ($EFSeriesC2A+"devmgr/v2/storage-systems/1/storage-pools") -Headers $headers -Body $filesystem -ContentType 'application/json' -WebSession $session
+# new session:
+$session = New-Object Microsoft.Powershell.Commands.WebRequestSession
+
+GetHosts
